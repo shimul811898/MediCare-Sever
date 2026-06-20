@@ -144,7 +144,28 @@ app.get("/api/doctors", async (req, res) => {
 
 });
 
+app.get("/api/doctors-all/admin", async (req, res) => {
+    const doctorsList = await db.collection("doctors").find({}).toArray();
+    const enrichedDoctors = [];
 
+    for (const doc of doctorsList) {
+        const user = await db.collection("user").findOne({
+            $or: [
+                { _id: doc.userId },
+                { id: doc.userId }
+            ]
+        });
+
+        enrichedDoctors.push({
+            ...doc,
+            name: user?.name || "Doctor",
+            email: user?.email || "",
+            image: user?.image || "",
+        });
+    }
+
+    res.json(enrichedDoctors);
+});
 
 app.patch("/api/doctors/:id/verify", async (req, res) => {
     const { id } = req.params;
@@ -203,6 +224,173 @@ app.get("/api/appointments/patient/:patientId", async (req, res) => {
             .sort({ createdAt: -1 })
             .toArray();
         res.json(appointments);
+});
+
+app.get("/api/appointments/doctor/:doctorId", async (req, res) => {
+        const { doctorId } = req.params;
+        const appointments = await db.collection("appointments")
+            .find({ doctorId })
+            .sort({ createdAt: -1 })
+            .toArray();
+        res.json(appointments);
+});
+
+app.get("/api/appointments", async (req, res) => {
+   
+        const appointments = await db.collection("appointments")
+            .find({})
+            .sort({ createdAt: -1 })
+            .toArray();
+        res.json(appointments);
+});
+
+
+app.patch("/api/appointments/:id/status", async (req, res) => {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!["pending", "approved", "rejected", "completed"].includes(status)) {
+            return res.status(400).json({ error: "Invalid status value" });
+        }
+
+        const result = await db.collection("appointments").updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status } }
+        );
+
+        res.json( result );
+    
+});
+
+
+
+
+app.post("/api/reviews", async (req, res) => {
+        const { appointmentId, doctorId, patientId, patientName, patientImage, rating, comment } = req.body;
+
+        if (!doctorId || !patientId || !rating) {
+            return res.status(400).json({ error: "Missing doctorId, patientId, or rating" });
+        }
+
+        const review = {
+            appointmentId,
+            doctorId,
+            patientId,
+            patientName: patientName || "Anonymous",
+            patientImage: patientImage || "",
+            rating: Number(rating),
+            comment: comment || "",
+            createdAt: new Date(),
+        };
+
+        const result = await db.collection("reviews").insertOne(review);
+
+        const reviews = await db.collection("reviews").find({ doctorId }).toArray();
+        const averageRating = reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length;
+
+        await db.collection("doctors").updateOne(
+            { userId: doctorId },
+            { $set: { averageRating: parseFloat(averageRating.toFixed(1)), reviewCount: reviews.length } }
+        );
+
+        res.status(201).json( result );
+});
+
+
+app.get("/api/reviews/:doctorId", async (req, res) => {
+        const { doctorId } = req.params;
+        const reviews = await db.collection("reviews")
+            .find({ doctorId })
+            .sort({ createdAt: -1 })
+            .toArray();
+        res.json(reviews);
+});
+
+
+
+app.get("/api/users", async (req, res) => {
+        const users = await db.collection("user").find({}).toArray();
+        res.json(users);
+});
+
+
+app.patch("/api/users/:id/role", async (req, res) => {
+        const { id } = req.params;
+        const { role } = req.body;
+
+        if (!["patient", "doctor", "admin"].includes(role)) {
+            return res.status(400).json({ error: "Invalid role" });
+        }
+
+        let result = await db.collection("user").updateOne(
+            { _id: id },
+            { $set: { role } }
+        );
+
+        if (result.matchedCount === 0) {
+            result = await db.collection("user").updateOne(
+                { id: id },
+                { $set: { role } }
+            );
+        }
+
+        if (role === "doctor") {
+            const exists = await db.collection("doctors").findOne({ userId: id });
+            if (!exists) {
+                await db.collection("doctors").insertOne({
+                    userId: id,
+                    specialization: "",
+                    hospital: "",
+                    fee: 0,
+                    bio: "",
+                    schedules: [],
+                    verified: false,
+                    createdAt: new Date(),
+                });
+            }
+        }
+
+        res.json({ message: `User role updated to ${role}`, result });
+  
+});
+
+
+
+app.get("/api/admin/stats", async (req, res) => {
+
+        const totalUsers = await db.collection("user").countDocuments();
+
+        const totalPatients = await db.collection("user").countDocuments({
+            $or: [
+                { role: "patient" },
+                { role: { $exists: false } },
+                { role: null }
+            ]
+        });
+
+        const totalDoctors = await db.collection("user").countDocuments({ role: "doctor" });
+        const verifiedDoctors = await db.collection("doctors").countDocuments({ verified: true });
+        const totalAppointments = await db.collection("appointments").countDocuments();
+
+        const paidAppointments = await db.collection("appointments").find({ paymentStatus: "paid" }).toArray();
+        const totalRevenue = paidAppointments.reduce((sum, appt) => sum + (appt.fee || 0), 0);
+
+        const recentAppointments = await db.collection("appointments")
+            .find({})
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .toArray();
+
+        res.json({
+            totalUsers,
+            totalPatients,
+            totalDoctors,
+            verifiedDoctors,
+            totalAppointments,
+            totalRevenue,
+            recentAppointments
+        });
+   
 });
 
 
