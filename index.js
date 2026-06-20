@@ -103,6 +103,60 @@ app.get("/api/doctors/:userId", async (req, res) => {
     });
 });
 
+app.get("/api/doctors", async (req, res) => {
+    const { search, specialization } = req.query;
+
+    const query = {};
+    if (specialization) {
+        query.specialization = { $regex: new RegExp(specialization, "i") };
+    }
+
+    const doctorsList = await db.collection("doctors").find(query).toArray();
+
+    const enrichedDoctors = [];
+
+    for (const doc of doctorsList) {
+        const user = await db.collection("user").findOne({
+            $or: [
+                { _id: doc.userId },
+                { id: doc.userId }
+            ]
+        });
+
+        if (doc.verified) {
+            const matchesSearch = !search ||
+                (user?.name && user.name.toLowerCase().includes(search.toLowerCase())) ||
+                (doc.specialization && doc.specialization.toLowerCase().includes(search.toLowerCase())) ||
+                (doc.hospital && doc.hospital.toLowerCase().includes(search.toLowerCase()));
+
+            if (matchesSearch) {
+                enrichedDoctors.push({
+                    ...doc,
+                    name: user?.name || "Doctor",
+                    email: user?.email || "",
+                    image: user?.image || "",
+                });
+            }
+        }
+    }
+
+    res.json(enrichedDoctors);
+
+});
+
+
+
+app.patch("/api/doctors/:id/verify", async (req, res) => {
+    const { id } = req.params;
+    const { verified } = req.body;
+
+    const result = await db.collection("doctors").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { verified: !!verified } }
+    );
+
+    res.json(result);
+});
 
 
 app.post("/api/appointments", async (req, res) => {
@@ -150,6 +204,7 @@ app.get("/api/appointments/patient/:patientId", async (req, res) => {
             .toArray();
         res.json(appointments);
 });
+
 
 
 app.listen(PORT, () => {
