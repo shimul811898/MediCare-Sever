@@ -6,7 +6,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
@@ -28,7 +28,16 @@ async function connectDB() {
         await client.connect();
         db = client.db("medicare");
         console.log("Successfully connected to MongoDB!");
-       
+        const adminEmail = "shimul811898@gmail.com";
+        const userCol = db.collection("user");
+        const adminUser = await userCol.findOne({ email: adminEmail });
+        if (adminUser && adminUser.role !== "admin") {
+            await userCol.updateOne(
+                { email: adminEmail },
+                { $set: { role: "admin" } }
+            );
+            console.log(`Successfully upgraded ${adminEmail} to admin role.`);
+        }
     } catch (error) {
         console.error("MongoDB connection failed:", error);
         process.exit(1);
@@ -94,94 +103,55 @@ app.get("/api/doctors/:userId", async (req, res) => {
     });
 });
 
-app.get("/api/doctors", async (req, res) => {
-    const { search, specialization } = req.query;
 
-    const query = {};
-    if (specialization) {
-        query.specialization = { $regex: new RegExp(specialization, "i") };
+
+app.post("/api/appointments", async (req, res) => {
+
+    const {
+        patientId,
+        patientName,
+        patientEmail,
+        doctorId,
+        doctorName,
+        doctorSpecialization,
+        date,
+        timeSlot,
+        fee,
+    } = req.body;
+
+    if (!patientId || !doctorId || !date || !timeSlot) {
+        return res.status(400).json({ error: "Missing required booking details" });
     }
 
-    const doctorsList = await db.collection("doctors").find(query).toArray();
+    const appointment = {
+        patientId,
+        patientName,
+        patientEmail,
+        doctorId,
+        doctorName,
+        doctorSpecialization,
+        date,
+        timeSlot,
+        fee: Number(fee) || 0,
+        status: "pending",
+        paymentStatus: "unpaid",
+        createdAt: new Date(),
+    };
 
-    const enrichedDoctors = [];
-
-    for (const doc of doctorsList) {
-        const user = await db.collection("user").findOne({
-            $or: [
-                { _id: doc.userId },
-                { id: doc.userId }
-            ]
-        });
-
-        if (doc.verified) {
-            const matchesSearch = !search ||
-                (user?.name && user.name.toLowerCase().includes(search.toLowerCase())) ||
-                (doc.specialization && doc.specialization.toLowerCase().includes(search.toLowerCase())) ||
-                (doc.hospital && doc.hospital.toLowerCase().includes(search.toLowerCase()));
-
-            if (matchesSearch) {
-                enrichedDoctors.push({
-                    ...doc,
-                    name: user?.name || "Doctor",
-                    email: user?.email || "",
-                    image: user?.image || "",
-                });
-            }
-        }
-    }
-
-    res.json(enrichedDoctors);
-
+    const result = await db.collection("appointments").insertOne(appointment);
+    res.status(201).json({ message: "Appointment booked successfully", appointmentId: result.insertedId });
 });
 
-app.get("/api/doctors-all/admin", async (req, res) => {
-    const doctorsList = await db.collection("doctors").find({}).toArray();
-    const enrichedDoctors = [];
-
-    for (const doc of doctorsList) {
-        const user = await db.collection("user").findOne({
-            $or: [
-                { _id: doc.userId },
-                { id: doc.userId }
-            ]
-        });
-
-        enrichedDoctors.push({
-            ...doc,
-            name: user?.name || "Doctor",
-            email: user?.email || "",
-            image: user?.image || "",
-        });
-    }
-
-    res.json(enrichedDoctors);
+app.get("/api/appointments/patient/:patientId", async (req, res) => {
+        const { patientId } = req.params;
+        const appointments = await db.collection("appointments")
+            .find({ patientId })
+            .sort({ createdAt: -1 })
+            .toArray();
+        res.json(appointments);
 });
-
-app.patch("/api/doctors/:id/verify", async (req, res) => {
-    const { id } = req.params;
-    const { verified } = req.body;
-
-    const result = await db.collection("doctors").updateOne(
-        { _id: new ObjectId(id) },
-        { $set: { verified: !!verified } }
-    );
-
-    res.json(result);
-});
-
-
-
-
-
-
-
-
-
-
 
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
-
