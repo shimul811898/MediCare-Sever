@@ -263,6 +263,24 @@ app.patch("/api/appointments/:id/status", async (req, res) => {
 });
 
 
+app.patch("/api/appointments/:id/pay", async (req, res) => {
+        const { id } = req.params;
+        const { transactionId } = req.body;
+
+        const result = await db.collection("appointments").updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $set: {
+                    paymentStatus: "paid",
+                    transactionId: transactionId || `TXN-${Date.now()}`,
+                    paidAt: new Date()
+                }
+            }
+        );
+
+        res.json( result );
+   
+});
 
 
 app.post("/api/reviews", async (req, res) => {
@@ -355,6 +373,22 @@ app.patch("/api/users/:id/role", async (req, res) => {
 });
 
 
+app.delete("/api/users/:id", async (req, res) => {
+    
+        const { id } = req.params;
+
+
+        let result = await db.collection("user").deleteOne({ _id: id });
+        if (result.deletedCount === 0) {
+            result = await db.collection("user").deleteOne({ id });
+        }
+
+        await db.collection("doctors").deleteOne({ userId: id });
+        await db.collection("appointments").deleteMany({ $or: [{ patientId: id }, { doctorId: id }] });
+
+        res.json( result );
+    
+});
 
 app.get("/api/admin/stats", async (req, res) => {
 
