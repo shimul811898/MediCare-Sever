@@ -277,6 +277,24 @@ app.patch("/api/appointments/:id/status", async (req, res) => {
     
 });
 
+app.patch("/api/appointments/:id/prescription", async (req, res) => {
+    const { id } = req.params;
+    const { prescription } = req.body;
+
+    if (!prescription) {
+        return res.status(400).json({ error: "Prescription text is required" });
+    }
+
+    const result = await db.collection("appointments").updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { prescription, prescribedAt: new Date() } }
+    );
+
+    res.json(result);
+});
+
+
+
 
 app.patch("/api/appointments/:id/pay", async (req, res) => {
         const { id } = req.params;
