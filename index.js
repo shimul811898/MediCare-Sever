@@ -52,13 +52,15 @@ app.get("/", (req, res) => {
 
 
 app.post("/api/doctors/profile", async (req, res) => {
-    const { userId, specialization, hospital, fee, bio, schedules } = req.body;
+    const { userId, name, image, specialization, hospital, fee, bio, schedules } = req.body;
 
     if (!userId) {
         return res.status(400).json({ error: "userId is required" });
     }
 
     const updateFields = { updatedAt: new Date() };
+    if (name !== undefined) updateFields.name = name;
+    if (image !== undefined) updateFields.image = image;
     if (specialization !== undefined) updateFields.specialization = specialization;
     if (hospital !== undefined) updateFields.hospital = hospital;
     if (fee !== undefined) updateFields.fee = Number(fee) || 0;
@@ -92,9 +94,9 @@ app.get("/api/doctors/:userId", async (req, res) => {
 
     res.json({
         ...doctor,
-        name: user?.name || "Doctor",
+        name: doctor.name || user?.name || "Doctor",
         email: user?.email || "",
-        image: user?.image || "",
+        image: doctor.image || user?.image || "",
     });
 });
 
@@ -127,9 +129,9 @@ app.get("/api/doctors", async (req, res) => {
             if (matchesSearch) {
                 enrichedDoctors.push({
                     ...doc,
-                    name: user?.name || "Doctor",
+                    name: doc.name || user?.name || "Doctor",
                     email: user?.email || "",
-                    image: user?.image || "",
+                    image: doc.image || user?.image || "",
                 });
             }
         }
