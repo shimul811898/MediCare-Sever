@@ -58,25 +58,20 @@ app.post("/api/doctors/profile", async (req, res) => {
         return res.status(400).json({ error: "userId is required" });
     }
 
-    const doctorProfile = {
-        userId,
-        specialization: specialization || "",
-        hospital: hospital || "",
-        fee: Number(fee) || 0,
-        bio: bio || "",
-        schedules: schedules || [],
-        updatedAt: new Date(),
-    };
-
+    const updateFields = { updatedAt: new Date() };
+    if (specialization !== undefined) updateFields.specialization = specialization;
+    if (hospital !== undefined) updateFields.hospital = hospital;
+    if (fee !== undefined) updateFields.fee = Number(fee) || 0;
+    if (bio !== undefined) updateFields.bio = bio;
+    if (schedules !== undefined) updateFields.schedules = schedules;
 
     const result = await db.collection("doctors").updateOne(
         { userId },
-        { $set: doctorProfile },
+        { $set: updateFields },
         { upsert: true }
     );
 
     res.json(result);
-
 });
 
 
