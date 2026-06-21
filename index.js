@@ -192,6 +192,7 @@ app.post("/api/appointments", async (req, res) => {
         date,
         timeSlot,
         fee,
+        symptoms,
     } = req.body;
 
     if (!patientId || !doctorId || !date || !timeSlot) {
@@ -210,6 +211,7 @@ app.post("/api/appointments", async (req, res) => {
         fee: Number(fee) || 0,
         status: "pending",
         paymentStatus: "unpaid",
+        symptoms: symptoms || "",
         createdAt: new Date(),
     };
 
@@ -244,6 +246,19 @@ app.get("/api/appointments", async (req, res) => {
         res.json(appointments);
 });
 
+app.get("/api/appointments/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const appointment = await db.collection("appointments").findOne({ _id: new ObjectId(id) });
+        if (!appointment) {
+            return res.status(404).json({ error: "Appointment not found" });
+        }
+        res.json(appointment);
+    } catch (err) {
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 
 app.patch("/api/appointments/:id/status", async (req, res) => {
         const { id } = req.params;
@@ -267,16 +282,30 @@ app.patch("/api/appointments/:id/pay", async (req, res) => {
         const { id } = req.params;
         const { transactionId } = req.body;
 
+        const txnId = transactionId || `TXN-${Date.now()}`;
+
         const result = await db.collection("appointments").updateOne(
             { _id: new ObjectId(id) },
             {
                 $set: {
                     paymentStatus: "paid",
-                    transactionId: transactionId || `TXN-${Date.now()}`,
+                    transactionId: txnId,
                     paidAt: new Date()
                 }
             }
         );
+
+        const appointment = await db.collection("appointments").findOne({ _id: new ObjectId(id) });
+        if (appointment) {
+            await db.collection("payments").insertOne({
+                appointmentId: id,
+                patientId: appointment.patientId,
+                doctorId: appointment.doctorId,
+                amount: appointment.fee || 0,
+                transactionId: txnId,
+                paymentDate: new Date()
+            });
+        }
 
         res.json( result );
    
@@ -405,6 +434,7 @@ app.get("/api/admin/stats", async (req, res) => {
         const totalDoctors = await db.collection("user").countDocuments({ role: "doctor" });
         const verifiedDoctors = await db.collection("doctors").countDocuments({ verified: true });
         const totalAppointments = await db.collection("appointments").countDocuments();
+        const totalReviews = await db.collection("reviews").countDocuments();
 
         const paidAppointments = await db.collection("appointments").find({ paymentStatus: "paid" }).toArray();
         const totalRevenue = paidAppointments.reduce((sum, appt) => sum + (appt.fee || 0), 0);
@@ -421,6 +451,7 @@ app.get("/api/admin/stats", async (req, res) => {
             totalDoctors,
             verifiedDoctors,
             totalAppointments,
+            totalReviews,
             totalRevenue,
             recentAppointments
         });
