@@ -81,12 +81,17 @@ app.get("/api/doctors/:userId", async (req, res) => {
     const { userId } = req.params;
     const doctor = await db.collection("doctors").findOne({ userId });
 
-    const user = await db.collection("user").findOne({
+    const userQuery = {
         $or: [
             { _id: userId },
             { id: userId }
         ]
-    });
+    };
+    if (ObjectId.isValid(userId)) {
+        userQuery.$or.push({ _id: new ObjectId(userId) });
+    }
+
+    const user = await db.collection("user").findOne(userQuery);
 
     if (!doctor) {
         return res.status(404).json({ error: "Doctor profile not found" });
@@ -113,12 +118,17 @@ app.get("/api/doctors", async (req, res) => {
     const enrichedDoctors = [];
 
     for (const doc of doctorsList) {
-        const user = await db.collection("user").findOne({
+        const userQuery = {
             $or: [
                 { _id: doc.userId },
                 { id: doc.userId }
             ]
-        });
+        };
+        if (ObjectId.isValid(doc.userId)) {
+            userQuery.$or.push({ _id: new ObjectId(doc.userId) });
+        }
+
+        const user = await db.collection("user").findOne(userQuery);
 
         if (doc.verified) {
             const matchesSearch = !search ||
@@ -146,18 +156,25 @@ app.get("/api/doctors-all/admin", async (req, res) => {
     const enrichedDoctors = [];
 
     for (const doc of doctorsList) {
-        const user = await db.collection("user").findOne({
+        const userQuery = {
             $or: [
                 { _id: doc.userId },
                 { id: doc.userId }
             ]
-        });
+        };
+        if (ObjectId.isValid(doc.userId)) {
+            userQuery.$or.push({ _id: new ObjectId(doc.userId) });
+        }
+
+        const user = await db.collection(
+            "user"
+        ).findOne(userQuery);
 
         enrichedDoctors.push({
             ...doc,
-            name: user?.name || "Doctor",
+            name: doc.name || user?.name || "Doctor",
             email: user?.email || "",
-            image: user?.image || "",
+            image: doc.image || user?.image || "",
         });
     }
 
