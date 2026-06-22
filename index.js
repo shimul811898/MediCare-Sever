@@ -435,20 +435,30 @@ app.patch("/api/users/:id/role", async (req, res) => {
 
 
 app.delete("/api/users/:id", async (req, res) => {
-    
-        const { id } = req.params;
+    const { id } = req.params;
 
+    const queryId = ObjectId.isValid(id) ? new ObjectId(id) : id;
+    let result = await db.collection("user").deleteOne({ _id: queryId });
+    if (result.deletedCount === 0) {
+        result = await db.collection("user").deleteOne({ _id: id });
+    }
+    if (result.deletedCount === 0) {
+        result = await db.collection("user").deleteOne({ id });
+    }
 
-        let result = await db.collection("user").deleteOne({ _id: id });
-        if (result.deletedCount === 0) {
-            result = await db.collection("user").deleteOne({ id });
-        }
+    await db.collection("doctors").deleteOne({ userId: id });
+    await db.collection("appointments").deleteMany({ $or: [{ patientId: id }, { doctorId: id }] });
 
-        await db.collection("doctors").deleteOne({ userId: id });
-        await db.collection("appointments").deleteMany({ $or: [{ patientId: id }, { doctorId: id }] });
+    res.json(result);
+});
 
-        res.json( result );
-    
+app.delete("/api/appointments/:id", async (req, res) => {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid appointment ID format" });
+    }
+    const result = await db.collection("appointments").deleteOne({ _id: new ObjectId(id) });
+    res.json(result);
 });
 
 app.get("/api/admin/stats", async (req, res) => {
