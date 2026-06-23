@@ -63,7 +63,10 @@ app.post("/api/doctors/profile", async (req, res) => {
     if (image !== undefined) updateFields.image = image;
     if (specialization !== undefined) updateFields.specialization = specialization;
     if (hospital !== undefined) updateFields.hospital = hospital;
-    if (fee !== undefined) updateFields.fee = Number(fee) || 0;
+    if (fee !== undefined && fee !== null && fee !== "") {
+        const parsedFee = Number(fee);
+        if (!isNaN(parsedFee) && parsedFee >= 0) updateFields.fee = parsedFee;
+    }
     if (bio !== undefined) updateFields.bio = bio;
     if (schedules !== undefined) updateFields.schedules = schedules;
 
@@ -375,6 +378,46 @@ app.post("/api/reviews", async (req, res) => {
         res.status(201).json( result );
 });
 
+
+app.get("/api/reviews", async (req, res) => {
+    try {
+        const reviews = await db.collection("reviews")
+            .find({})
+            .sort({ createdAt: -1 })
+            .limit(3)
+            .toArray();
+
+        const enrichedReviews = [];
+        for (const rev of reviews) {
+            let doctorName = "Doctor";
+            if (rev.doctorId) {
+                const doctor = await db.collection("doctors").findOne({ userId: rev.doctorId });
+                if (doctor) {
+                    doctorName = doctor.name || "Doctor";
+                }
+                if (doctorName === "Doctor") {
+                    const userQuery = {
+                        $or: [
+                            { _id: rev.doctorId },
+                            { id: rev.doctorId }
+                        ]
+                    };
+                    if (ObjectId.isValid(rev.doctorId)) {
+                        userQuery.$or.push({ _id: new ObjectId(rev.doctorId) });
+                    }
+                    const user = await db.collection("user").findOne(userQuery);
+                    if (user) doctorName = user.name || "Doctor";
+                }
+            }
+            enrichedReviews.push({ ...rev, doctorName });
+        }
+
+        res.json(enrichedReviews);
+    } catch (err) {
+        console.error("Error fetching reviews:", err);
+        res.status(500).json({ error: "Failed to fetch reviews" });
+    }
+});
 
 app.get("/api/reviews/:doctorId", async (req, res) => {
         const { doctorId } = req.params;
