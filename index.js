@@ -504,6 +504,26 @@ app.delete("/api/appointments/:id", async (req, res) => {
     res.json(result);
 });
 
+
+app.get("/api/reviews", async (req, res) => {
+    try {
+        const reviews = await db.collection("reviews").find({}).sort({ createdAt: -1 }).limit(3).toArray();
+        
+        const userIds = [...new Set(reviews.map(r => r.patientId))];
+        const users = await db.collection("user").find({ id: { $in: userIds } }).toArray();
+        const userMap = new Map(users.map(u => [u.id, u.image]));
+
+        const enrichedReviews = reviews.map(rev => ({
+            ...rev,
+            patientImage: rev.patientImage || userMap.get(rev.patientId) || "" // এখানে ইমেজ যোগ হচ্ছে
+        }));
+
+        res.json(enrichedReviews);
+    } catch (err) {
+        res.status(500).json({ error: "Failed" });
+    }
+});
+
 app.get("/api/admin/stats", async (req, res) => {
 
         const totalUsers = await db.collection("user").countDocuments();
