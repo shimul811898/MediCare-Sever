@@ -1,5 +1,3 @@
-const dns = require('node:dns');
-dns.setDefaultResultOrder('ipv4first');
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
@@ -8,9 +6,12 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express.json());
 
 const uri = process.env.MONGODB_URI;
@@ -24,11 +25,14 @@ const client = new MongoClient(uri, {
 });
 
 let db;
+let isConnected = false;
 
 async function connectDB() {
+    if (isConnected && db) return db;
     try {
         await client.connect();
         db = client.db("medicare");
+        isConnected = true;
         console.log("Successfully connected to MongoDB!");
         const adminEmail = "shimul811898@gmail.com";
         const userCol = db.collection("user");
@@ -42,11 +46,25 @@ async function connectDB() {
         }
     } catch (error) {
         console.error("MongoDB connection failed:", error);
-        process.exit(1);
+        throw error;
     }
+    return db;
 }
 
-connectDB();
+// Middleware to ensure DB is connected on every request
+app.use(async (req, res, next) => {
+    try {
+        if (!db) {
+            db = await connectDB();
+        }
+        next();
+    } catch (err) {
+        res.status(503).json({ error: "Database connection error" });
+    }
+});
+
+// Eagerly connect on startup (works for local dev)
+connectDB().catch(console.error);
 
 app.get("/", (req, res) => {
     res.send("MediCare Server is running fine!");
@@ -517,7 +535,7 @@ app.get("/api/reviews", async (req, res) => {
 
         const enrichedReviews = reviews.map(rev => ({
             ...rev,
-            patientImage: rev.patientImage || userMap.get(rev.patientId) || "" // এখানে ইমেজ যোগ হচ্ছে
+            patientImage: rev.patientImage || userMap.get(rev.patientId) || "" 
         }));
 
         res.json(enrichedReviews);
@@ -567,6 +585,12 @@ app.get("/api/admin/stats", async (req, res) => {
 
 
 
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== "production") {
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
+
+
+module.exports = app;
