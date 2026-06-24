@@ -51,19 +51,6 @@ async function connectDB() {
     return db;
 }
 
-// Middleware to ensure DB is connected on every request
-app.use(async (req, res, next) => {
-    try {
-        if (!db) {
-            db = await connectDB();
-        }
-        next();
-    } catch (err) {
-        res.status(503).json({ error: "Database connection error" });
-    }
-});
-
-// Eagerly connect on startup (works for local dev)
 connectDB().catch(console.error);
 
 app.get("/", (req, res) => {
